@@ -63,11 +63,15 @@ protocol FeedNav { }
 extension String: FeedNav { }
 //extension Int: FeedNav { }
 
+let pathComponentPattern = try! NSRegularExpression(pattern: "([a-z]+)?(?:\\[(\\d+)\\])?", options: .caseInsensitive)
+
+
 
 class FeedElement: NSObject, FeedNode {
     var tagName: String!
     var children: [FeedNode] = []
     var attributes: [String: String] = [:]
+    var dateFormatter = DateFormatter()
     
     var childElements: [FeedElement] {
         return children.compactMap { $0 as? FeedElement }
@@ -90,6 +94,45 @@ class FeedElement: NSObject, FeedNode {
     init(tagName: String, attributes: [String: String] = [:]) {
         self.tagName = tagName.lowercased()
         self.attributes = attributes
+    }
+    
+    func findAll<T: Sequence>(path: T) -> [FeedElement] where T.Element: StringProtocol {
+        var elements = [self]
+        
+        for pathComponent in path {
+            let componentString = String(pathComponent)
+        
+            if let matches = pathComponentPattern.matchString(str: componentString) {
+                if let tagName = matches[1] {
+                    if matches[2] != nil {
+                        let nth = Int(matches[2]!)!
+                        elements = elements.compactMap {
+                            return $0.childElements.filter { $0.tagName == tagName }.dropFirst(nth).first
+                        }
+                    } else {
+                        elements = elements.flatMap {
+                            return $0.childElements.filter { $0.tagName == tagName }
+                        }
+                    }
+                } else if let nth = matches[2] {
+                    var nth = Int(nth)!
+                    if nth < 0 {
+                        nth = elements.endIndex - nth
+                    }
+                    if nth >= elements.endIndex || nth < 0 {
+                        return []
+                    }
+                    
+                    return [elements[nth]]
+                }
+            }
+        }
+        
+        return elements
+    }
+    
+    func findAll(path: String) -> [FeedElement] {
+        return findAll(path: path.split(separator: "/"))
     }
     
     subscript(tagName: String) -> [FeedElement] {
